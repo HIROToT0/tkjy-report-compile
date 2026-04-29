@@ -62,13 +62,13 @@ playwright install chromium
 
 ```python
 # 太科检测报告系统
-USERNAME = "hewei"
-PASSWORD = "88833223534qwer32abc@thinks"
-COOKIE_FILE = "~/.hermes/report_cookies_comp1.txt"
+USERNAME = "***"   # 填入实际账号
+PASSWORD = "***"   # 填入实际密码
+COOKIE_FILE = "~/.hermes/report_cookies_compile.txt"
 
 # 飞书应用
-FEISHU_APP_ID = "cli_a95212122abddcee"
-FEISHU_APP_SECRET = "qESYjM4BnzyYS7sEPlyCvdMuKOGdypZG"
+FEISHU_APP_ID = "***"      # 填入实际 app_id
+FEISHU_APP_SECRET = "***"  # 填入实际 app_secret
 FEISHU_SPREADSHEET_TOKEN = "NU7wsFP2chQq0htIjUCcHKqVn0d"
 FEISHU_SHEET_ID = "ac04d9"
 ```

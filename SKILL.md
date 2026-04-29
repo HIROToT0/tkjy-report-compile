@@ -24,10 +24,10 @@ description: 操作太科检测报告编制系统（comp1.taiketest.com）完成
 
 ## 环境信息
 
-- **账号**: hewei
-- **密码**: 88833223534qwer32abc@thinks
-- **Cookie 文件**: `~/.hermes/report_cookies_comp1.txt`（首次需手动保存，后续复用）
-- **飞书应用 CLI**: app_id=`cli_a95212122abddcee`, app_secret=`qESYjM4BnzyYS7sEPlyCvdMuKOGdypZG`
+- **账号**: `***`（填入实际账号）
+- **密码**: `***`（填入实际密码）
+- **Cookie 文件**: `~/.hermes/report_cookies_compile.txt`（首次需手动保存，后续复用）
+- **飞书应用 CLI**: app_id=`***`, app_secret=`***`
 - **报告系统 reportId**: `291`（混凝土试块抗压专用）
 
 ---
@@ -56,8 +56,8 @@ r1 = subprocess.run([
     'https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal',
     '-H', 'Content-Type: application/json',
     '-d', json.dumps({
-        "app_id": "cli_a95212122abddcee",
-        "app_secret": "qESYjM4BnzyYS7sEPlyCvdMuKOGdypZG"
+        "app_id": "***",      # 填入实际 app_id
+        "app_secret": "***"   # 填入实际 app_secret
     })
 ], capture_output=True, text=True, timeout=15)
 token = json.loads(r1.stdout)['tenant_access_token']
@@ -106,7 +106,7 @@ def login_to_report_system():
             print("已登录")
         else:
             page.fill('input[name="username"]', 'hewei')
-            page.fill('input[name="password"]', '88833223534qwer32abc@thinks')
+            page.fill('input[name="password"]', '***')  # 填入实际密码
             page.click('button[type="submit"]')
             page.wait_for_load_state("networkidle")
         
