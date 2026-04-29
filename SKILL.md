@@ -42,7 +42,7 @@ pip install playwright
 playwright install chromium
 
 # 确保 cookie 文件存在
-touch ~/.hermes/report_cookies_comp1.txt
+touch ~/.hermes/report_cookies_compile.txt
 ```
 
 ### 第 1 步：读取飞书表格，获取报告编号清单
@@ -65,7 +65,7 @@ token = json.loads(r1.stdout)['tenant_access_token']
 # 读取表格 A-F 列（前10行）
 r = subprocess.run([
     'curl', '-s',
-    'https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/NU7wsFP2chQq0htIjUCcHKqVn0d/values/ac04d9!A1:F10',
+    'https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/***/values/***!A1:F10',
     '-H', f'Authorization: Bearer {token}'
 ], capture_output=True, text=True, timeout=15)
 
@@ -111,7 +111,7 @@ def login_to_report_system():
             page.wait_for_load_state("networkidle")
         
         # 保存 Cookie 供后续复用
-        context.storage_state(path="~/.hermes/report_cookies_comp1.txt")
+        context.storage_state(path="~/.hermes/report_cookies_compile.txt")
         print("登录成功，Cookie 已保存")
         return context, page
 ```
@@ -120,7 +120,7 @@ def login_to_report_system():
 - 登录 URL 是 `http://comp1.taiketest.com/Report/`，末尾有斜杠，遗漏会 302 重定向循环
 - 登录成功后 URL 格式：`http://comp1.taiketest.com/Report/ptcompile/getCompile.do?reportId=291`
 - 账号 hewei 在系统中有效，其他账号可能无 reportId=291 的权限
-- Cookie 文件存储路径：`~/.hermes/report_cookies_comp1.txt`（需绝对路径）
+- Cookie 文件存储路径：`~/.hermes/report_cookies_compile.txt`（需绝对路径）
 
 ### 第 3 步：判断报告状态
 
@@ -311,7 +311,7 @@ def update_feishu_cell(token, row_index, col, value):
     }
     r = subprocess.run([
         'curl', '-sX', 'PUT',
-        'https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/NU7wsFP2chQq0htIjUCcHKqVn0d/values',
+        'https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/***/values',
         '-H', f'Authorization: Bearer {token}',
         '-H', 'Content-Type: application/json',
         '-d', json.dumps(payload)
@@ -379,9 +379,9 @@ for 每行报告编号 in 飞书表格:
 
 | 文件 | 路径 |
 |------|------|
-| 报告系统 Cookie | `~/.hermes/report_cookies_comp1.txt` |
+| 报告系统 Cookie | `~/.hermes/report_cookies_compile.txt` |
 | 报告系统登录页 | `http://comp1.taiketest.com/Report/` |
 | 报告系统 reportId | `291`（混凝土试块抗压） |
-| 飞书表格 spreadsheetToken | `NU7wsFP2chQq0htIjUCcHKqVn0d` |
-| 飞书表格 sheetId | `ac04d9` |
+| 飞书表格 spreadsheetToken | `***`（填入实际值） |
+| 飞书表格 sheetId | `***`（填入实际值） |
 | 飞书表格列映射 | A=报告编号, B=检测对象, C=检测日期, D=预计完成日期, E=报告提交状态, F=异常情况说明 |

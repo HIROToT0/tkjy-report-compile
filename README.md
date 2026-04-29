@@ -69,8 +69,8 @@ COOKIE_FILE = "~/.hermes/report_cookies_compile.txt"
 # 飞书应用
 FEISHU_APP_ID = "***"      # 填入实际 app_id
 FEISHU_APP_SECRET = "***"  # 填入实际 app_secret
-FEISHU_SPREADSHEET_TOKEN = "NU7wsFP2chQq0htIjUCcHKqVn0d"
-FEISHU_SHEET_ID = "ac04d9"
+FEISHU_SPREADSHEET_TOKEN = "***"  # 填入实际 spreadsheet token
+FEISHU_SHEET_ID = "***"           # 填入实际 sheet_id
 ```
 
 ### 运行
