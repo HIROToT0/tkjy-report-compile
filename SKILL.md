@@ -1,14 +1,22 @@
 ---
 name: tkjy-report-compile
 category: productivity
-description: 操作太科检测报告编制系统（comp1.taiketest.com）完成混凝土试块抗压报告的批量编制——从飞书表格读取报告编号、判断状态、编辑样品达到值、生成上传报告、回填飞书表格状态。
+description: 太科检测报告全流程自动化——TKMgt任务数据抓取 → 飞书表格 → 报告编制系统自动化（判断状态、编辑样品达到值、生成上传报告、回填状态）
 ---
 
-# 太科检测报告编制系统自动化
+# 太科检测报告全流程自动化
 
 ## 简介
 
-操作太科检测报告编制系统（comp1.taiketest.com）完成混凝土试块抗压报告的批量编制。核心流程：从飞书表格读取报告编号 → 判断报告状态 → 编辑样品达到值 → 生成并上传报告 → 回填飞书表格。
+本 skill 覆盖太科检测报告的**完整自动化流程**：
+
+1. **TKMgt 数据抓取**：从 TKMgt 检测系统提取任务数据，写入飞书电子表格
+2. **报告编制**：读取飞书表格中的报告编号，在报告编制系统中批量完成报告生成与上传，并回填状态
+
+```
+TKMgt检测系统  ──抓取──▶  飞书表格  ──读取编号──▶  报告编制系统  ──回填状态──▶  飞书表格
+   (test.tkjy.com)           (任务清单)      (comp1.taiketest.com)          (提交状态)
+```
 
 ---
 
@@ -16,72 +24,150 @@ description: 操作太科检测报告编制系统（comp1.taiketest.com）完成
 
 | 系统 | 地址 | 用途 |
 |------|------|------|
-| 太科检测报告系统 | http://comp1.taiketest.com/Report/ | 报告编制 |
-| 飞书表格（任务清单） | https://ccnlg9zq6b6x.feishu.cn/wiki/WTMWwhfcxiKjvkkLKhFc3haAnOf | 报告编号清单 |
-| 飞书 API | open.feishu.cn | 读写表格状态 |
+| TKMgt 检测系统 | http://test.tkjy.com/TKMgt/ | 任务数据来源 |
+| 报告编制系统 | http://comp1.taiketest.com/Report/ | 报告编制与上传 |
+| 飞书表格 | https://ccnlg9zq6b6x.feishu.cn/wiki/WTMWwhfcxiKjvkkLKhFc3haAnOf | 任务清单与状态记录 |
 
 ---
 
 ## 环境信息
 
-- **账号**: `***`（填入实际账号）
-- **密码**: `***`（填入实际密码）
-- **Cookie 文件**: `~/.hermes/report_cookies_compile.txt`（首次需手动保存，后续复用）
-- **飞书应用 CLI**: app_id=`***`, app_secret=`***`
-- **报告系统 reportId**: `291`（混凝土试块抗压专用）
+- **TKMgt 账号**: `***`（填入实际账号）
+- **TKMgt Cookie**: `/tmp/tkmgt_full_cookies.txt`（首次需手动保存，后续复用）
+- **报告系统账号**: `***`（填入实际账号）
+- **报告系统密码**: `***`（填入实际密码）
+- **报告系统 Cookie**: `~/.hermes/report_cookies_compile.txt`（首次需手动保存，后续复用）
+- **报告系统 reportId**: `291`（混凝土试块抗压）
+- **飞书应用**: app_id=`***`, app_secret=`***`（填入实际值）
+- **飞书表格 spreadsheetToken**: `***`（填入实际值）
+- **飞书表格 sheetId**: `***`（填入实际值）
 
 ---
 
-## 完整操作流程
+## 第一部分：TKMgt 数据抓取
 
-### 第 0 步：环境准备
+### 1.1 TKMgt 登录
 
 ```bash
-# 安装 Playwright（如果尚未安装）
-pip install playwright
-playwright install chromium
+# 访问登录页面获取初始 Cookie
+curl -s -c /tmp/tkmgt_full_cookies.txt \
+  "http://test.tkjy.com/TKMgt/" \
+  --connect-timeout 15 --max-time 30
 
-# 确保 cookie 文件存在
-touch ~/.hermes/report_cookies_compile.txt
-```
+# 发送短信验证码
+curl -s -b /tmp/tkmgt_full_cookies.txt \
+  "http://test.tkjy.com/TKMgt/login/sendSmsCode.do" \
+  -X POST \
+  -d "phone=***"   # 填入实际手机号
 
-### 第 1 步：读取飞书表格，获取报告编号清单
-
-```python
-import subprocess, json
-
-# 获取飞书 token
-r1 = subprocess.run([
-    'curl', '-sX', 'POST',
-    'https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal',
-    '-H', 'Content-Type: application/json',
-    '-d', json.dumps({
-        "app_id": "***",      # 填入实际 app_id
-        "app_secret": "***"   # 填入实际 app_secret
-    })
-], capture_output=True, text=True, timeout=15)
-token = json.loads(r1.stdout)['tenant_access_token']
-
-# 读取表格 A-F 列（前10行）
-r = subprocess.run([
-    'curl', '-s',
-    'https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/***/values/***!A1:F10',
-    '-H', f'Authorization: Bearer {token}'
-], capture_output=True, text=True, timeout=15)
-
-data = json.loads(r.stdout)
-rows = data['data']['valueRange']['values']
-# rows[0] 是表头，rows[1:] 是数据
-# 第0列=报告编号，第1列=检测对象，第4列=报告提交状态，第5列=异常情况说明
+# 验证登录
+curl -s -b /tmp/tkmgt_full_cookies.txt \
+  "http://test.tkjy.com/TKMgt/login/valideSmsCode.do" \
+  -X POST \
+  -d "phone=***&smsCode=***"   # 填入实际手机号和验证码
 ```
 
 **避坑：**
-- 飞书表格 range 要精确到具体 sheet_id（如 `ac04d9!A1:F10`），不能只写范围名或 spreadsheet token
-- 首次读取前先确认 sheet_id 是否正确，错误则返回 `INVALID_PARAMETER`
-- 多余额定要 `.get('data', {}).get('valueRange', {}).get('values', [])` 防御性读取
-- 飞书 token 有 2 小时有效期，过期需重新获取
+- Cookie 文件路径 `/tmp/tkmgt_full_cookies.txt`，需与其他脚本共用同一文件
+- 验证码有效期约 5 分钟，超时需重新发送
+- TKMgt 和 Report 是独立子系统，Cookie 不通用
 
-### 第 2 步：登录报告系统（强烈建议用 Playwright，不推荐 curl）
+### 1.2 查询任务数据
+
+```bash
+# API 接口
+curl -s -b /tmp/tkmgt_full_cookies.txt \
+  "http://test.tkjy.com/TKMgt/taskManage/queryTaskManageList.do" \
+  -X POST \
+  -H "Content-Type: application/json" \
+  -d '{
+    "searchObj": {
+      "requestTestDateStart": "***",   # 填入起始日期，如 2026-04-28
+      "requestTestDateEnd": "***",     # 填入结束日期
+      "reportStatus": "1",
+      "productName": "混凝土试块抗压强度",
+      "orderType": "1"
+    },
+    "currentPage": 1,
+    "pageSize": 100
+  }'
+```
+
+**筛选参数说明**
+
+| 参数 | 说明 | 示例值 |
+|------|------|--------|
+| requestTestDateStart | 试验日期开始 | 2026-04-28 |
+| requestTestDateEnd | 试验日期结束 | 2026-04-28 |
+| reportStatus | 任务状态（0=待领样，1=已领样） | 1 |
+| productName | 检测对象 | 混凝土试块抗压强度 |
+| orderType | 订单类型（1=来样，2=现场，3=更改） | 1 |
+| currentPage | 页码 | 1 |
+| pageSize | 每页数量（建议≤100） | 100 |
+
+**返回数据字段**
+
+```json
+{
+  "reportCode": "SY26002194",
+  "orderNo": "26006599",
+  "productName": "混凝土试块抗压强度",
+  "entrustDate": "2026-04-14",
+  "requestTestDate": "2026-04-28",
+  "departmentName": "检测八所（东部）",
+  "reportStatus": "已领样",
+  "reportId": "3020378"
+}
+```
+
+**避坑：**
+- 一次查询建议不超过 100 条，超出需分页（增加 currentPage）
+- 如果返回空数组，先检查 reportStatus 和日期范围是否正确
+- Cookie 过期时接口返回空数据或跳转到登录页，需重新登录
+
+### 1.3 飞书表格写入
+
+#### 获取飞书 Access Token
+
+```bash
+curl -s "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "app_id": "***",       # 填入实际 app_id
+    "app_secret": "***"    # 填入实际 app_secret
+  }'
+```
+
+#### 写入数据到飞书表格
+
+```bash
+curl -s -X PUT \
+  "https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/***/values" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "valueRange": {
+      "range": "***!A2:E100",   # 填入实际 sheet_id 和范围
+      "values": [
+        ["报告编号", "检测对象", "委托日期", "要求试验日期"],
+        ["SY26002194", "混凝土试块抗压强度", "2026-04-14", "2026-04-28"]
+      ]
+    }
+  }'
+```
+
+**成功响应**：`{"code":0,"msg":"success","data":{"updatedCells":392,"updatedRows":98}}`
+
+**避坑：**
+- 单次写入建议不超过 500 行
+- Token 有效期 2 小时，过期需重新获取
+- 确保飞书应用已开通 sheets 读写权限
+
+---
+
+## 第二部分：报告编制系统自动化
+
+### 2.1 登录报告系统（强烈建议用 Playwright）
 
 原因：
 - 该站登录后设置多个 Cookie（latoToken + JSESSIONID），且有 HTTPOnly flag
@@ -105,8 +191,8 @@ def login_to_report_system():
         if "/Report/" in page.url and "login" not in page.url.lower():
             print("已登录")
         else:
-            page.fill('input[name="username"]', 'hewei')
-            page.fill('input[name="password"]', '***')  # 填入实际密码
+            page.fill('input[name="username"]', '***')   # 填入实际账号
+            page.fill('input[name="password"]', '***')   # 填入实际密码
             page.click('button[type="submit"]')
             page.wait_for_load_state("networkidle")
         
@@ -118,13 +204,10 @@ def login_to_report_system():
 
 **避坑：**
 - 登录 URL 是 `http://comp1.taiketest.com/Report/`，末尾有斜杠，遗漏会 302 重定向循环
-- 登录成功后 URL 格式：`http://comp1.taiketest.com/Report/ptcompile/getCompile.do?reportId=291`
 - 账号 hewei 在系统中有效，其他账号可能无 reportId=291 的权限
 - Cookie 文件存储路径：`~/.hermes/report_cookies_compile.txt`（需绝对路径）
 
-### 第 3 步：判断报告状态
-
-进入报告页面后，获取"报告字段"内容：
+### 2.2 判断报告状态
 
 ```
 URL格式：http://comp1.taiketest.com/Report/ptcompile/getCompile.do?reportId=291&reportCode={报告编号}
@@ -147,7 +230,6 @@ def check_report_status(page, report_code):
     elif "报告已上传" in content:
         return "已上传"
     else:
-        # 兜底提取状态字段值
         import re
         match = re.search(r'报告字段.*?([^\s]{4,10})', content)
         return match.group(1) if match else "未知"
@@ -155,13 +237,12 @@ def check_report_status(page, report_code):
 
 **避坑：**
 - 页面是动态渲染（JavaScript），curl 拿不到实际内容，必须用 Playwright
-- 如果页面长时间卡住，增加 `timeout=60000` 并减少等待
 - 首次访问某报告编号时，如果系统无该编号数据，页面会显示空或跳回列表页
 - 状态为"检验完成"时仍需继续操作（编辑样品 → 生成报告）
 
-### 第 4 步：处理样品数据（核心逻辑）
+### 2.3 处理样品数据（核心逻辑）
 
-#### 4.1 点击编辑按钮
+#### 点击编辑按钮
 
 页面下方显示样品编号列表（如 THJHY20260000004267-1），每个样品右侧有**编辑**按钮：
 
@@ -182,9 +263,8 @@ def click_edit_for_sample(page, sample_index=0):
 **避坑：**
 - 编辑按钮在动态渲染的表格中，需等待页面完全加载后再查找
 - 弹窗出现后需等待 1-2 秒让弹窗完全渲染再操作
-- 如果页面有多个编辑入口，确认点击的是样品行对应的按钮
 
-#### 4.2 从弹窗获取"达到值"
+#### 从弹窗获取"达到值"
 
 ```python
 def get_reach_value_from_dialog(page):
@@ -192,12 +272,12 @@ def get_reach_value_from_dialog(page):
     import re
     content = page.content()
     
-    # 方法1：正则匹配"达到值"后面的数字
+    # 正则匹配"达到值"后面的数字
     match = re.search(r'达到值.*?(\d+\.?\d*)', content, re.DOTALL)
     if match:
         return float(match.group(1))
     
-    # 方法2：直接查找数字（混凝土抗压通常50~200 MPa）
+    # 备选：直接查找合理范围内的数字（混凝土抗压通常50~200 MPa）
     numbers = re.findall(r'\d+\.?\d*', content)
     for num in numbers:
         val = float(num)
@@ -208,11 +288,11 @@ def get_reach_value_from_dialog(page):
 ```
 
 **避坑：**
-- 弹窗中"达到值"字段可能包含单位（如"MPa"），读取时需去除非数字字符
+- 弹窗中"达到值"字段可能包含单位（如"MPa"），正则需处理非数字字符
 - 如果正则匹配不到，尝试 `page.inner_text()` 逐行扫描
 - 抗压强度达到值正常范围约 50~200 MPa，明显偏低（<100）需标记异常
 
-#### 4.3 判定规则
+#### 判定规则
 
 ```
 如果 达到值 < 100  或者  显示"无效"：
@@ -227,14 +307,7 @@ def get_reach_value_from_dialog(page):
 
 ```python
 def process_reach_value(page, reach_value):
-    if reach_value is None:
-        action = "取消"
-    elif reach_value < 100:
-        action = "取消"
-    else:
-        action = "确定"
-    
-    if action == "取消":
+    if reach_value is None or reach_value < 100:
         page.click('button:has-text("取消")')
         return True  # 异常
     else:
@@ -247,22 +320,20 @@ def process_reach_value(page, reach_value):
 - 多组样品中只要**任何一组**出现异常，整个报告编号就标记异常，跳过剩余样品
 - 点击"确定"后弹窗关闭，需等待新页面渲染完成再进行下一步
 
-### 第 5 步：生成报告并上传
+### 2.4 生成报告并上传
 
-#### 5.1 保存报告
+#### 保存报告
 
 ```python
 save_button = page.locator('button:has-text("保存"), a:has-text("保存")')
 save_button.click()
 page.wait_for_load_state("networkidle")
-print("已点击保存")
 ```
 
-#### 5.2 等待"生成报告"按钮就绪
+#### 等待"生成报告"按钮就绪
 
 ```python
 def wait_for_generate_button(page, timeout=60):
-    """等待'生成报告'按钮可点击"""
     import time
     start = time.time()
     while time.time() - start < timeout:
@@ -276,42 +347,39 @@ def wait_for_generate_button(page, timeout=60):
 ```
 
 **避坑：**
-- "生成报告"按钮在保存后需要一段时间才就绪（服务端处理），轮询等待时 sleep 不能太短（<0.5秒可能被限流）
+- "生成报告"按钮在保存后需要一段时间才就绪（服务端处理），sleep 不能太短
 - 超时时间至少设 60 秒
 
-#### 5.3 点击生成报告 → 上传报告
+#### 点击生成报告 → 上传报告
 
 ```python
 gen_btn = page.locator('button:has-text("生成报告"), a:has-text("生成报告")').first
 gen_btn.click()
 page.wait_for_load_state("networkidle")
-print("已点击生成报告")
 
 upload_btn = page.locator('button:has-text("上传报告"), a:has-text("上传报告")').first
 upload_btn.click()
 page.wait_for_load_state("networkidle")
-print("已点击上传报告")
 ```
 
 **避坑：**
 - 上传报告后页面可能有确认提示，等待网络空闲后再进行下一个编号
-- 如果上传失败（网络波动），整个流程需要从该报告编号重新开始
+- 如果上传失败，整个流程需要从该报告编号重新开始
 
-### 第 6 步：回填飞书表格
+### 2.5 回填飞书表格
 
 ```python
 def update_feishu_cell(token, row_index, col, value):
     """更新飞书表格单个单元格"""
-    range_str = f"ac04d9!{col}{row_index}"
     payload = {
         "valueRange": {
-            "range": range_str,
+            "range": f"***!{col}{row_index}",   # 填入实际 sheet_id
             "values": [[value]]
         }
     }
     r = subprocess.run([
         'curl', '-sX', 'PUT',
-        'https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/***/values',
+        'https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/***/values',  # 填入实际 token
         '-H', f'Authorization: Bearer {token}',
         '-H', 'Content-Type: application/json',
         '-d', json.dumps(payload)
@@ -321,22 +389,24 @@ def update_feishu_cell(token, row_index, col, value):
 
 # 使用示例
 # E列=报告提交状态，F列=异常情况说明
-# 第2行对应 rows[1]（第1行是表头）
 update_feishu_cell(token, 7, 'E', "已提交")     # 正常提交
 update_feishu_cell(token, 7, 'E', "异常")      # 异常情况
 update_feishu_cell(token, 7, 'F', "结果异常")  # 异常说明
 ```
 
 **避坑：**
-- 飞书表格行号从 1 开始，`ac04d9!E2` = 第2行
+- 飞书表格行号从 1 开始
 - 更新频率不要太高（>5次/秒），建议每条间隔 0.5 秒
-- 异常情况说明只在异常时填写，正常提交时不填
 
 ---
 
 ## 整体循环逻辑
 
 ```
+【第一步：数据抓取】
+TKMgt 查询任务数据 → 写入飞书表格
+
+【第二步：报告编制】
 for 每行报告编号 in 飞书表格:
     1. 判断是否已处理（报告提交状态 ≠ 空）
        → 已处理则跳过
@@ -356,22 +426,22 @@ for 每行报告编号 in 飞书表格:
 
 | 错误 | 原因 | 解决方案 |
 |------|------|----------|
-| 页面停留在登录页 | Cookie 无效或过期 | 删除 cookie 文件，重新用 Playwright 登录 |
-| `INVALID_PARAMETER` | sheet_id 或 range 错误 | 确认 sheet_id 不是 wiki_token，需用 metainfo API 获取真实 sheet_id |
+| TKMgt 接口返回空数据 | Cookie 过期 | 重新登录 TKMgt，刷新 Cookie |
+| 页面停留在登录页 | Cookie 无效或过期 | 删除 Cookie 文件，重新用 Playwright 登录 |
+| `INVALID_PARAMETER` | sheet_id 或 range 错误 | 确认 sheet_id，需用 metainfo API 获取真实 sheet_id |
 | 编辑按钮点不到 | 页面未完全加载 | 增加 `wait_for_load_state("networkidle")` 或 `wait_for_timeout(2000)` |
 | 达到值获取为 None | 正则匹配失败 | 检查页面实际 HTML 结构，尝试 `page.inner_text()` 逐行扫描 |
 | 保存后按钮不出现 | 服务端处理中 | 增加等待时间，或刷新页面重试 |
-| curl 返回空白 | Windows 路径含中文 | 用英文临时路径，避免 `桌面` 等中文目录 |
 | 多个编辑按钮分不清 | 页面有多个编辑入口 | 通过按钮的 `nth()` 和附近文本（样品编号）定位唯一按钮 |
 
 ---
 
 ## 性能优化
 
-- **Cookie 复用**：每处理完一个编号不要关闭浏览器 context，复用登录态直到所有编号完成
+- **Cookie 复用**：不要频繁重新登录，复用登录态直到过期
 - **跳过已处理**：表格读取时过滤掉已提交/异常的编号，减少不必要的页面访问
-- **并发处理**：多个报告编号之间完全独立，可以 `delegate_task` 并行处理（最多 3 个并发）
 - **批量回填**：所有编号处理完后统一回填飞书（需记录每个编号的处理结果）
+- **并发处理**：多个报告编号之间完全独立，可以 `delegate_task` 并行处理（最多 3 个并发）
 
 ---
 
@@ -379,8 +449,10 @@ for 每行报告编号 in 飞书表格:
 
 | 文件 | 路径 |
 |------|------|
+| TKMgt Cookie | `/tmp/tkmgt_full_cookies.txt` |
 | 报告系统 Cookie | `~/.hermes/report_cookies_compile.txt` |
-| 报告系统登录页 | `http://comp1.taiketest.com/Report/` |
+| TKMgt 系统 | http://test.tkjy.com/TKMgt/ |
+| 报告系统 | http://comp1.taiketest.com/Report/ |
 | 报告系统 reportId | `291`（混凝土试块抗压） |
 | 飞书表格 spreadsheetToken | `***`（填入实际值） |
 | 飞书表格 sheetId | `***`（填入实际值） |
